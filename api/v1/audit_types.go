@@ -22,14 +22,21 @@ import (
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+// +kubebuilder:validation:Enum=Health;Disruption;Checks
+type reportingComponents string
+
+const (
+	health     reportingComponents = "Health"
+	disruption reportingComponents = "Disruption"
+	checks     reportingComponents = "Checks"
+)
 
 // AuditSpec defines the desired state of Audit
 type AuditSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of Audit. Edit audit_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// +optional
+	RetentionsPeriod    *int                  `json:"retentionsPeriod,omitempty"`
+	Selector            *metav1.LabelSelector `json:"selector"`
+	ReportingComponents []reportingComponents `json:"reportingComponents"`
 }
 
 // AuditStatus defines the observed state of Audit
