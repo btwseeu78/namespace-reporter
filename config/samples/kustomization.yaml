@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- report_v1_audit.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples
