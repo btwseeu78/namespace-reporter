@@ -39,10 +39,31 @@ spec:
           spec:
             description: AuditSpec defines the desired state of Audit
             properties:
-              foo:
-                description: Foo is an example field of Audit. Edit audit_types.go
-                  to remove/update
+              chunks:
+                format: int32
+                type: integer
+              reportingComponents:
+                items:
+                  description: |-
+                    EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+                    NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+                  enum:
+                  - Health
+                  - Disruption
+                  - Checks
+                  type: string
+                type: array
+              retentionsPeriod:
+                type: integer
+              selector:
+                additionalProperties:
+                  type: string
+                type: object
+              webhookUrl:
                 type: string
+            required:
+            - reportingComponents
+            - selector
             type: object
           status:
             description: AuditStatus defines the observed state of Audit

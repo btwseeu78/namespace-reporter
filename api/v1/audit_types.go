@@ -35,8 +35,11 @@ const (
 type AuditSpec struct {
 	// +optional
 	RetentionsPeriod    *int                  `json:"retentionsPeriod,omitempty"`
-	Selector            *metav1.LabelSelector `json:"selector"`
+	Selector            map[string]string     `json:"selector"`
 	ReportingComponents []reportingComponents `json:"reportingComponents"`
+	Chunks              *int32                `json:"chunks,omitempty"`
+	// +optional
+	WebhookUrl *string `json:"webhookUrl,omitempty"`
 }
 
 // AuditStatus defines the observed state of Audit

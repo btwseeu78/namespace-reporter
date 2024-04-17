@@ -18,24 +18,30 @@ package controller
 
 import (
 	"context"
-
+	reportv1 "github.com/btwseeu78/namespace-reporter/api/v1"
+	"github.com/go-logr/logr"
+	v12 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	reportv1 "github.com/btwseeu78/namespace-reporter/api/v1"
+	"time"
 )
 
 // AuditReconciler reconciles a Audit object
 type AuditReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	Log    logr.Logger
 }
 
 //+kubebuilder:rbac:groups=report.arpan.io,resources=audits,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=report.arpan.io,resources=audits/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=report.arpan.io,resources=audits/finalizers,verbs=update
+//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
+//+kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -47,11 +53,51 @@ type AuditReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *AuditReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := r.Log.WithValues("audit", req.NamespacedName)
+	log.Info("reconciling audit")
 
-	// TODO(user): your logic here
+	//Get The Objects
+	var audit reportv1.Audit
+	if err := r.Get(ctx, req.NamespacedName, &audit); err != nil {
+		log.Error(err, "unable to fetch audit")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 
-	return ctrl.Result{}, nil
+	namespacelist := v1.NamespaceList{}
+
+	err := r.List(ctx, &namespacelist, &client.ListOptions{
+		LabelSelector: labels.SelectorFromSet(audit.Spec.Selector),
+	})
+
+	if err != nil {
+		log.Error(err, "unable to list namespaces as per provided level", "name", req.Name, "labels", audit.Spec.Selector)
+		return ctrl.Result{}, err
+	}
+
+	// Filter Out Conditions As per the requirements
+
+	for _, namespace := range namespacelist.Items {
+		deployList := &v12.DeploymentList{}
+		err = r.List(ctx, deployList, &client.ListOptions{
+			Namespace: namespace.Name,
+		})
+		if err != nil {
+			log.Error(err, "unable to list deployments", "namespace", namespace.Name)
+			continue
+		}
+		log.Info("found deployments", "namespace", namespace.Name, "deployments", len(deployList.Items))
+
+		for _, deploy := range deployList.Items {
+			deployment := &v12.Deployment{}
+			if err := r.Get(ctx, types.NamespacedName{Name: deploy.Name, Namespace: deploy.Namespace}, deployment); err != nil {
+				log.Error(err, "Unable to list deploy", "namespace", namespace.Name, "deploy", deploy.Name)
+			}
+			log.Info("found deployment", "namespace", namespace.Name, "deploy", deploy.Name, "healthSpec", deployment.Spec.Template.Spec.Containers[0].Image)
+		}
+
+	}
+
+	return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -59,4 +105,8 @@ func (r *AuditReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&reportv1.Audit{}).
 		Complete(r)
+}
+
+func (r *AuditReconciler) ProcessDeployment(ctx context.Context, req ctrl.Request, nslist v1.NamespaceList) error {
+	panic("error")
 }

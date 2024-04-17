@@ -125,6 +125,7 @@ func main() {
 	if err = (&controller.AuditReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Log:    ctrl.Log.WithName("controllers").WithName("Audit"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Audit")
 		os.Exit(1)
