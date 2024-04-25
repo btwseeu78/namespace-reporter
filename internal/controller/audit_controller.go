@@ -17,7 +17,10 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	reportv1 "github.com/btwseeu78/namespace-reporter/api/v1"
 	"github.com/go-logr/logr"
 	v12 "k8s.io/api/apps/v1"
@@ -25,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
@@ -35,6 +39,23 @@ type AuditReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
+}
+
+type HealthStatus struct {
+	ReadinessProbe bool `json:"readinessProbe"`
+	LivenessProbe  bool `json:"livenessProbe"`
+}
+
+type Embed struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Color       int    `json:"color"`
+}
+
+type WebhookMessage struct {
+	Username string   `json:"username"`
+	Content  string   `json:"content"`
+	Embeds   []*Embed `json:"embeds"`
 }
 
 //+kubebuilder:rbac:groups=report.arpan.io,resources=audits,verbs=get;list;watch;create;update;patch;delete
@@ -78,6 +99,10 @@ func (r *AuditReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	for _, namespace := range namespacelist.Items {
 		deployList := &v12.DeploymentList{}
+		helathStatus := HealthStatus{
+			ReadinessProbe: false,
+			LivenessProbe:  false,
+		}
 		err = r.List(ctx, deployList, &client.ListOptions{
 			Namespace: namespace.Name,
 		})
@@ -93,11 +118,49 @@ func (r *AuditReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				log.Error(err, "Unable to list deploy", "namespace", namespace.Name, "deploy", deploy.Name)
 			}
 			log.Info("found deployment", "namespace", namespace.Name, "deploy", deploy.Name, "healthSpec", deployment.Spec.Template.Spec.Containers[0].Image)
+			if deployment.Spec.Template.Spec.Containers[0].ReadinessProbe != nil {
+				helathStatus.ReadinessProbe = true
+
+			}
+			if deployment.Spec.Template.Spec.Containers[0].LivenessProbe != nil {
+				helathStatus.LivenessProbe = true
+			}
+			if audit.Spec.WebhookUrl != nil {
+				if err := r.sendMessage(helathStatus, audit.Spec.WebhookUrl); err != nil {
+					log.Error(err, "unable to send message to webhook", "namespace", namespace.Name, "deploy", deploy.Name)
+					return ctrl.Result{RequeueAfter: time.Hour}, err
+				}
+
+			}
 		}
 
 	}
 
-	return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+	return ctrl.Result{RequeueAfter: time.Hour * 24}, nil
+}
+
+func (r *AuditReconciler) sendMessage(hcheck HealthStatus, url *string) error {
+	message := &WebhookMessage{
+		Username: "AuditController",
+		Content:  "Health Check Status",
+		Embeds: []*Embed{
+			{
+				Title:       "Health Check Status" + time.DateTime,
+				Description: fmt.Sprintf("liveness: %v,readiness: %v", hcheck.LivenessProbe, hcheck.LivenessProbe),
+				Color:       16734296,
+			},
+		},
+	}
+	data, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
+	_, err = http.Post(*url, "application/json", bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	return nil
+
 }
 
 // SetupWithManager sets up the controller with the Manager.
